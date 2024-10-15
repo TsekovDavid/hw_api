@@ -49,7 +49,6 @@ func CreateItem(item Item, er error) error {
 	}
 	defer resp.Body.Close()
 
-	// Проверяем статус ответа
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to add item, server returned: %s", resp.Status)
 	}
@@ -57,46 +56,54 @@ func CreateItem(item Item, er error) error {
 	return nil
 }
 
-func GetItemInfo(caption string) (Item, error) {
+func GetItemInfo(caption string) ([]Item, error) {
 	resp, err := http.Get(fmt.Sprintf("http://localhost:8080/item/%s", caption))
 	if err != nil {
-		return Item{}, fmt.Errorf("failed to send get request: %v", err)
+		return nil, fmt.Errorf("failed to send get request: %v", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return Item{}, fmt.Errorf("failed to get item, server returned: %s", resp.Status)
+		return nil, fmt.Errorf("failed to get item, server returned: %s", resp.Status)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return Item{}, fmt.Errorf("failed to read response body: %v", err)
-	}
-	responseString := string(body)
-	parts := strings.Split(responseString, ", ")
-
-	if len(parts) != 3 {
-		return Item{}, fmt.Errorf("unexpected response format")
-	}
-	captionPart := strings.Split(parts[0], ": ")[1]
-	weightPart := strings.Split(parts[1], ": ")[1]
-	numberPart := strings.Split(parts[2], ": ")[1]
-	weight, err := strconv.ParseFloat(weightPart, 32)
-	if err != nil {
-		return Item{}, fmt.Errorf("invalid weight format")
+		return nil, fmt.Errorf("failed to read response body: %v", err)
 	}
 
-	number, err := strconv.Atoi(numberPart)
-	if err != nil {
-		return Item{}, fmt.Errorf("invalid number format")
+
+	lines := strings.Split(string(body), "\n")
+	var items []Item
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, ", ")
+		if len(parts) != 3 {
+			return nil, fmt.Errorf("unexpected response format")
+		}
+		captionPart := strings.Split(parts[0], ": ")[1]
+		weightPart := strings.Split(parts[1], ": ")[1]
+		numberPart := strings.Split(parts[2], ": ")[1]
+		weight, err := strconv.ParseFloat(weightPart, 32)
+		if err != nil {
+			return nil, fmt.Errorf("invalid weight format")
+		}
+
+		number, err := strconv.Atoi(numberPart)
+		if err != nil {
+			return nil, fmt.Errorf("invalid number format")
+		}
+
+		item := Item{
+			Caption: captionPart,
+			Weight:  float32(weight),
+			Number:  number,
+		}
+		items = append(items, item)
 	}
 
-	item := Item{
-		Caption: captionPart,
-		Weight:  float32(weight),
-		Number:  number,
-	}
-
-	return item, nil
+	return items, nil
 }
 
 func main() {
@@ -125,14 +132,32 @@ func main() {
 		}
 		time.Sleep(1 * time.Second)
 	}
+
+	itemSummary := make(map[string]Item)
+
 	for _, cap := range itemsCap {
-		item, err := GetItemInfo(cap)
+		items, err := GetItemInfo(cap)
 		if err != nil {
 			fmt.Println("Error:", err)
 			break
 		}
-		sumWeight := item.Weight * float32(item.Number)
-		fmt.Printf("%s %d шт общим весом %.2f\n", cap, item.Number, sumWeight)
+		for _, item := range items {
+			if existingItem, ok := itemSummary[item.Caption]; ok {
+				existingItem.Number += item.Number
+				existingItem.Weight += item.Weight * float32(item.Number)
+				itemSummary[item.Caption] = existingItem
+			} else {
+				itemSummary[item.Caption] = Item{
+					Caption: item.Caption,
+					Weight:  item.Weight * float32(item.Number),
+					Number:  item.Number,
+				}
+			}
+		}
 	}
+	for _, item := range itemSummary {
+		fmt.Printf("%s %dшт общим весом %.2f\n", item.Caption, item.Number, item.Weight)
+	}
+
 	fmt.Println("Создание предметов завершено.")
 }

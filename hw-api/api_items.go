@@ -19,7 +19,7 @@ var Items = make([]Item, 0)
 func main() {
 	e := echo.New()
 	e.POST("/item", AddItem)
-	e.GET("/item/:caption", GetItem)
+	e.GET("/item/:caption", GetItems)
 	log.Fatal(e.Start(":8080"))
 }
 
@@ -33,23 +33,24 @@ func AddItem(c echo.Context) error {
 	return c.String(http.StatusOK, "Item added successfully")
 }
 
-func findItem(caption string) *Item {
+func findItems(caption string) []Item {
+	var foundItems []Item
 	for _, item := range Items {
 		if item.Caption == caption {
-			return &item
+			foundItems = append(foundItems, item)
 		}
 	}
-	return nil
+	return foundItems
 }
 
-func GetItem(c echo.Context) error {
-	// item := findItem(c.QueryParam("caption"))
-	// if item != nil {
-	// 	return c.String(http.StatusOK, fmt.Sprintf("caption: %s, weight: %f, number: %d", item.Caption, item.Weight, item.Number))
-	// }
-	item := findItem(c.Param("caption"))
-	if item != nil {
-		return c.String(http.StatusOK, fmt.Sprintf("caption: %s, weight: %f, number: %d", item.Caption, item.Weight, item.Number))
+func GetItems(c echo.Context) error {
+	items := findItems(c.Param("caption"))
+	if len(items) == 0 {
+		return c.String(http.StatusBadRequest, "items not found")
 	}
-	return c.String(http.StatusBadRequest, "item not found")
+	var response string
+	for _, item := range items {
+		response += fmt.Sprintf("caption: %s, weight: %f, number: %d\n", item.Caption, item.Weight, item.Number)
+	}
+	return c.String(http.StatusOK, response)
 }
